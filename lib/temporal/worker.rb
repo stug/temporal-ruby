@@ -20,6 +20,8 @@ module Temporal
     #   be marked at the namespace level. This will cause Temporal server to reject any polling for workflow tasks
     #   from workers with these bad versions.
     #
+    #   TODO: comment about fork_before_processing?
+    #
     #   See https://docs.temporal.io/docs/tctl/how-to-use-tctl/#recovery-from-bad-deployment----auto-reset-workflow
     def initialize(
       config = Temporal.configuration,
@@ -27,7 +29,9 @@ module Temporal
       workflow_thread_pool_size: Temporal::Workflow::Poller::DEFAULT_OPTIONS[:thread_pool_size],
       binary_checksum: Temporal::Workflow::Poller::DEFAULT_OPTIONS[:binary_checksum],
       activity_poll_retry_seconds: Temporal::Activity::Poller::DEFAULT_OPTIONS[:poll_retry_seconds],
-      workflow_poll_retry_seconds: Temporal::Workflow::Poller::DEFAULT_OPTIONS[:poll_retry_seconds]
+      workflow_poll_retry_seconds: Temporal::Workflow::Poller::DEFAULT_OPTIONS[:poll_retry_seconds],
+      activity_should_fork_before_processing: Temporal::Activity::Poller::DEFAULT_OPTIONS[:should_fork_before_processing]
+      # TODO: workflow version of this option?
     )
       @config = config
       @workflows = Hash.new { |hash, key| hash[key] = ExecutableLookup.new }
@@ -39,7 +43,8 @@ module Temporal
       @shutting_down = false
       @activity_poller_options = {
         thread_pool_size: activity_thread_pool_size,
-        poll_retry_seconds: activity_poll_retry_seconds
+        poll_retry_seconds: activity_poll_retry_seconds,
+        should_fork_before_processing: activity_should_fork_before_processing
       }
       @workflow_poller_options = {
         thread_pool_size: workflow_thread_pool_size,

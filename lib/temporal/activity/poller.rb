@@ -11,7 +11,8 @@ module Temporal
     class Poller
       DEFAULT_OPTIONS = {
         thread_pool_size: 20,
-        poll_retry_seconds: 0
+        poll_retry_seconds: 0,
+        should_fork_before_processing: false
       }.freeze
 
       def initialize(namespace, task_queue, activity_lookup, config, middleware = [], options = {})
@@ -45,7 +46,7 @@ module Temporal
 
         thread.join
         thread_pool.shutdown
-        heartbeat_thread_pool.shutdown
+        @heartbeat_thread_pool&.shutdown  # if it hasn't been instantiated, don't create it
       end
 
       private
@@ -106,9 +107,35 @@ module Temporal
       end
 
       def process(task)
-        middleware_chain = Middleware::Chain.new(middleware)
+        if @options[:should_fork_before_processing]
+          Temporal.logger.info("forking to run activity")
+          pid = fork do
+            # TODO: needs to be closed
+            heartbeat_thread_pool_for_fork = 
+              ScheduledThreadPool.new(
+                1,
+                @config,
+                {
+                  pool_name: 'heartbeat',
+                  namespace: namespace,
+                  task_queue: task_queue
+                }
+              )
+            process_inner(task, heartbeat_thread_pool_for_fork)
+          end
 
-        TaskProcessor.new(task, task_queue, namespace, activity_lookup, middleware_chain, config, heartbeat_thread_pool).process
+          Temporal.logger.info("waiting on forked process (pid #{pid})")
+          Process.wait(pid)
+          Temporal.logger.info("forked process done!")
+        else
+          process_inner(task, heartbeat_thread_pool)
+        end
+      end
+
+      def process_inner(task, heartbeat_thread_pool)
+          middleware_chain = Middleware::Chain.new(middleware)
+
+          TaskProcessor.new(task, task_queue, namespace, activity_lookup, middleware_chain, config, heartbeat_thread_pool).process
       end
 
       def poll_retry_seconds
