@@ -6,6 +6,8 @@ require 'temporal/middleware/chain'
 require 'temporal/scheduled_thread_pool'
 require 'temporal/thread_pool'
 
+require 'grpc'
+
 module Temporal
   class Activity
     class Poller
@@ -27,7 +29,8 @@ module Temporal
 
       def start
         @shutting_down = false
-        @thread = Thread.new(&method(:poll_loop))
+        # @thread = Thread.new(&method(:poll_loop))
+        poll_loop
       end
 
       def stop_polling
@@ -45,7 +48,7 @@ module Temporal
         end
 
         thread.join
-        thread_pool.shutdown
+        # thread_pool.shutdown
         @heartbeat_thread_pool&.shutdown  # if it hasn't been instantiated, don't create it
       end
 
@@ -69,7 +72,7 @@ module Temporal
         metrics_tags = { namespace: namespace, task_queue: task_queue }.freeze
 
         loop do
-          thread_pool.wait_for_available_threads
+          # thread_pool.wait_for_available_threads
 
           return if shutting_down?
 
@@ -87,7 +90,8 @@ module Temporal
 
           next unless task&.activity_type
 
-          thread_pool.schedule { process(task) }
+          # thread_pool.schedule { process(task) }
+          process(task)
         end
       end
 
@@ -109,7 +113,12 @@ module Temporal
       def process(task)
         if @options[:should_fork_before_processing]
           Temporal.logger.info("forking to run activity")
+
+          GRPC.prefork
+
           pid = fork do
+            GRPC.postfork_child
+
             # TODO: needs to be closed
             heartbeat_thread_pool_for_fork = 
               ScheduledThreadPool.new(
@@ -123,6 +132,8 @@ module Temporal
               )
             process_inner(task, heartbeat_thread_pool_for_fork)
           end
+
+          GRPC.postfork_parent
 
           Temporal.logger.info("waiting on forked process (pid #{pid})")
           Process.wait(pid)

@@ -1,0 +1,112 @@
+#!/usr/bin/env ruby
+require_relative '../init'
+require_relative '../lib/crypt_payload_codec'
+
+require 'temporal/worker'
+
+Dir[File.expand_path('../workflows/*.rb', __dir__)].each { |f| require f }
+Dir[File.expand_path('../activities/*.rb', __dir__)].each { |f| require f }
+Dir[File.expand_path('../middleware/*.rb', __dir__)].each { |f| require f }
+
+if !ENV['USE_ENCRYPTION'].nil?
+  Temporal.configure do |config|
+    config.task_queue = 'crypt'
+    config.payload_codec = Temporal::Connection::Converter::Codec::Chain.new(
+      payload_codecs: [
+        Temporal::CryptPayloadCodec.new
+      ]
+    )
+  end
+end
+
+if !ENV['USE_ERROR_SERIALIZATION_V2'].nil?
+  Temporal.configure do |config|
+    config.task_queue = 'error_serialization_v2'
+    config.use_error_serialization_v2 = true
+  end
+end
+
+Temporal.configure do |config|
+  config.add_header_propagator(SamplePropagator)
+end
+
+worker = Temporal::Worker.new(
+  binary_checksum: `git show HEAD -s --format=%H`.strip,
+  activity_should_fork_before_processing: true,
+  activity_thread_pool_size: 1
+)
+
+# worker.register_workflow(AsyncActivityWorkflow)
+# worker.register_workflow(AsyncHelloWorldWorkflow)
+# worker.register_workflow(BranchingWorkflow)
+# worker.register_workflow(CallsDelegatorWorkflow)
+# worker.register_workflow(CallFailingActivityWorkflow)
+# worker.register_workflow(CancellingTimerWorkflow)
+# worker.register_workflow(CheckWorkflow)
+# worker.register_workflow(ChildWorkflowTimeoutWorkflow)
+# worker.register_workflow(ChildWorkflowTerminatedWorkflow)
+# worker.register_workflow(ContinueAsNewWorkflow)
+# worker.register_workflow(FailingActivitiesWorkflow)
+# worker.register_workflow(FailingWorkflow)
+# worker.register_workflow(HandlingStructuredErrorWorkflow)
+# worker.register_workflow(HelloWorldWorkflow)
+# worker.register_workflow(InvalidContinueAsNewWorkflow)
+# worker.register_workflow(LocalHelloWorldWorkflow)
+# worker.register_workflow(LongWorkflow)
+# worker.register_workflow(LoopWorkflow)
+# worker.register_workflow(MetadataWorkflow)
+# worker.register_workflow(ParentCloseWorkflow)
+# worker.register_workflow(ParentIdReuseWorkflow)
+# worker.register_workflow(ParentWorkflow)
+# worker.register_workflow(ProcessFileWorkflow)
+# worker.register_workflow(QueryWorkflow)
+# worker.register_workflow(QuickTimeoutWorkflow)
+# worker.register_workflow(RandomlyFailingWorkflow)
+# worker.register_workflow(ReleaseWorkflow)
+# worker.register_workflow(ResultWorkflow)
+# worker.register_workflow(ScheduleChildWorkflow)
+# worker.register_workflow(SendSignalToExternalWorkflow)
+# worker.register_workflow(SerialHelloWorldWorkflow)
+# worker.register_workflow(SideEffectWorkflow)
+# worker.register_workflow(SignalWithStartWorkflow)
+# worker.register_workflow(SignalWorkflow)
+# worker.register_workflow(SimpleTimerWorkflow)
+# worker.register_workflow(SlowChildWorkflow)
+# worker.register_workflow(StartChildWorkflowWorkflow)
+# worker.register_workflow(TimeoutWorkflow)
+# worker.register_workflow(TripBookingWorkflow)
+# worker.register_workflow(UpsertSearchAttributesWorkflow)
+# worker.register_workflow(WaitForWorkflow)
+# worker.register_workflow(WaitForExternalSignalWorkflow)
+# worker.register_workflow(WaitForNamedSignalWorkflow)
+# worker.register_dynamic_workflow(DelegatorWorkflow)
+
+# worker.register_activity(AsyncActivity)
+# worker.register_activity(EchoActivity)
+# worker.register_activity(FailingActivity)
+# worker.register_activity(FailingWithStructuredErrorActivity)
+# worker.register_activity(GenerateFileActivity)
+# worker.register_activity(GuessActivity)
+worker.register_activity(HelloWorldActivity)
+# worker.register_activity(LongRunningActivity)
+# worker.register_activity(ProcessFileActivity)
+# worker.register_activity(RandomlyFailingActivity)
+# worker.register_activity(RandomNumberActivity)
+# worker.register_activity(TerminateWorkflowActivity)
+# worker.register_activity(SleepActivity)
+# worker.register_activity(UploadFileActivity)
+# worker.register_activity(Trip::BookFlightActivity)
+# worker.register_activity(Trip::BookHotelActivity)
+# worker.register_activity(Trip::CancelCarActivity)
+# worker.register_activity(Trip::CancelFlightActivity)
+# worker.register_activity(Trip::CancelHotelActivity)
+# worker.register_activity(Trip::MakePaymentActivity)
+# worker.register_activity(Trip::RentCarActivity)
+# worker.register_dynamic_activity(DelegatorActivity)
+
+worker.add_workflow_task_middleware(LoggingMiddleware, 'EXAMPLE')
+worker.add_activity_middleware(LoggingMiddleware, 'EXAMPLE')
+worker.add_activity_middleware(SamplePropagator)
+worker.add_workflow_middleware(SamplePropagator)
+
+worker.start
