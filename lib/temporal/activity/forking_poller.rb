@@ -4,7 +4,6 @@ require 'temporal/error_handler'
 require 'temporal/metric_keys'
 require 'temporal/middleware/chain'
 require 'temporal/scheduled_thread_pool'
-# require 'temporal/thread_pool'
 
 require 'grpc'
 
@@ -12,7 +11,6 @@ module Temporal
   class Activity
     class ForkingPoller
       DEFAULT_OPTIONS = {
-        thread_pool_size: 20,  # TODO: remove?
         poll_retry_seconds: 0
       }.freeze
 
@@ -28,7 +26,6 @@ module Temporal
 
       def start  # TODO: maybe just get rid of this
         @shutting_down = false
-        # @thread = Thread.new(&method(:poll_loop))
         poll_loop
       end
 
@@ -40,17 +37,6 @@ module Temporal
       def cancel_pending_requests
         connection.cancel_polling_request
       end
-
-      # TODO: pretty sure this is not needed
-      # def wait
-      #   if !shutting_down?
-      #     raise "Activity poller waiting for shutdown completion without being in shutting_down state!"
-      #   end
-
-      #   thread.join
-      #   thread_pool.shutdown
-      #   heartbeat_thread_pool.shutdown
-      # end
 
       private
 
@@ -72,8 +58,6 @@ module Temporal
         metrics_tags = { namespace: namespace, task_queue: task_queue }.freeze
 
         loop do
-          # thread_pool.wait_for_available_threads
-
           return if shutting_down?  # TODO: not sure what should happen to this
 
           time_diff_ms = ((Time.now - last_poll_time) * 1000).round
@@ -148,30 +132,6 @@ module Temporal
       def poll_retry_seconds
         @options[:poll_retry_seconds]
       end
-
-      # def thread_pool
-      #   @thread_pool ||= ThreadPool.new(
-      #     options[:thread_pool_size],
-      #     @config,
-      #     {
-      #       pool_name: 'activity_task_poller',
-      #       namespace: namespace,
-      #       task_queue: task_queue
-      #     }
-      #   )
-      # end
-
-      # def heartbeat_thread_pool
-      #   @heartbeat_thread_pool ||= ScheduledThreadPool.new(
-      #     options[:thread_pool_size],
-      #     @config,
-      #     {
-      #       pool_name: 'heartbeat',
-      #       namespace: namespace,
-      #       task_queue: task_queue
-      #     }
-      #   )
-      # end
     end
   end
 end
